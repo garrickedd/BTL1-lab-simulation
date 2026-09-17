@@ -8,69 +8,50 @@
 
 ### 1.2. Sơ đồ tổng quan
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              MẠNG LAB SOC                                   │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌───────────────────────────┐          ┌───────────────────────────┐       │
-│  │      HOST-A (Desktop)     │          │      HOST-B (Laptop)      │       │
-│  │    Ryzen 5 5600 - 16GB    │          │   Ryzen 7 5800H - 16GB    │       │
-│  │                           │          │                           │       │
-│  │  ┌─────────────────────┐  │          │  ┌─────────────────────┐  │       │
-│  │  │  VM-SPLUNK          │  │          │  │  VM-ATTACKER        │  │       │
-│  │  │  (Splunk Enterprise)│  │          │  │  (Kali Linux)       │  │       │
-│  │  │  Ubuntu Server      │  │          │  │  + công cụ tấn công │  │       │
-│  │  └──────────┬──────────┘  │          │  └──────────┬──────────┘  │       │
-│  │             │             │          │             │             │       │
-│  │  ┌──────────▼──────────┐  │          │  ┌──────────▼──────────┐  │       │
-│  │  │  VM-WIN-ENDPOINT    │  │          │  │  VM-FORENSICS       │  │       │
-│  │  │  (Windows 10/11)    │  │          │  │  (Windows 10)       │  │       │
-│  │  │  + Splunk UF        │  │          │  │  + Autopsy/KAPE     │  │       │
-│  │  └──────────┬──────────┘  │          │  └─────────────────────┘  │       │
-│  │             │             │          │                           │       │
-│  │  ┌──────────▼──────────┐  │          │                           │       │
-│  │  │  VM-LINUX-ENDPOINT  │  │          │                           │       │
-│  │  │  (Ubuntu Server)    │  │          │                           │       │
-│  │  │  + Splunk UF        │  │          │                           │       │
-│  │  └─────────────────────┘  │          │                           │       │
-│  └───────────────────────────┘          └───────────────────────────┘       │
-│                                                                             │
-│  ═══════════════════════════════════════════════════════════════════════    │
-│                    Mạng nội bộ Lab (NAT Network / Host-Only)                │
-│                             192.168.56.0/24                                 │
-└─────────────────────────────────────────────────────────────────────────────┘
+                    ┌─────────────────────┐
+                    │  Internet (Modem)   │
+                    │    192.168.1.1      │
+                    └──────────┬──────────┘
+                               │
+              ┌────────────────┴────────────────┐
+              │                                 │
+    ┌─────────▼─────────┐             ┌─────────▼─────────┐
+    │  HOST-A (Desktop) │             │  HOST-B (Laptop)  │
+    │  LAN Cable        │             │  WiFi             │
+    │  192.168.1.10     │             │  192.168.1.20     │
+    └─────────┬─────────┘             └─────────┬─────────┘
+              │                                 │
+    ┌─────────▼────────────────────────────┐    │
+    │  VM-pfSense (Host-A)                 │    │
+    │  ├─ WAN (NAT): 10.0.2.15             │    │
+    │  └─ LAN (Bridged): 192.168.56.1      │    │
+    └─────────┬────────────────────────────┘    │
+              │                                  │
+    ┌─────────▼──────────────┐      ┌────────────▼─────────────────────────┐
+    │  VMs trên Host-A       │      │  VMs trên Host-B                     │
+    │                        │      │                                      │
+    │  ┌──────────────────┐  │      │  ┌────────────────────────────────┐  │
+    │  │ VM-SPLUNK        │  │      │  │ VM-ATTACKER                    │  │
+    │  │ 192.168.56.10    │  │      │  │ ├─ Adapter 1: Bridged          │  │
+    │  └──────────────────┘  │      │  │ │   IP: 192.168.56.100         │  │
+    │  ┌──────────────────┐  │      │  │ │   GW: 192.168.56.1           │  │
+    │  │ VM-WIN-ENDPOINT  │  │      │  │ └─ Adapter 2: NAT              │  │
+    │  │ 192.168.56.20    │  │      │  │     IP: 10.0.2.15              │  │
+    │  └──────────────────┘  │      │  │     GW: 10.0.2.2               │  │
+    │  ┌──────────────────┐  │      │  └────────────────────────────────┘  │
+    │  │ VM-LINUX-ENDPOINT│  │      │                                      │
+    │  │ 192.168.56.30    │  │      │  ┌────────────────────────────────┐  │
+    │  └──────────────────┘  │      │  │ VM-FORENSICS                   │  │
+    │                        │      │  │ ├─ Adapter 1: Bridged          │  │
+    │                        │      │  │ │   IP: 192.168.56.40          │  │
+    │                        │      │  │ │   GW: 192.168.56.1           │  │
+    │                        │      │  │ └─ Adapter 2: NAT              │  │
+    │                        │      │  │     IP: 10.0.2.15              │  │
+    │                        │      │  │     GW: 10.0.2.2               │  │
+    │                        │      │  └────────────────────────────────┘  │
+    └────────────────────────┘      └──────────────────────────────────────┘
 ```
 
-### 1.3. Mô hình kết nối chi tiết
-```
-                      ┌─────────────────────┐
-                      │   Internet (Host)   │
-                      └──────────┬──────────┘
-                                 │
-                      ┌──────────▼──────────┐
-                      │  pfSense Firewall   │ ◄─── Tường lửa ảo
-                      │   (VM trên Host-A)  │       (NAT + Rules)
-                      └──────────┬──────────┘
-                                 │
-                     ┌───────────▼───────────┐
-                     │   Lab Internal Network│
-                     │    192.168.56.0/24    │
-                     └───────────┬───────────┘
-                                 │
-        ┌────────────────────────┼────────────────────────┐
-        │                        │                        │
-┌───────▼───────┐       ┌───────▼────────┐       ┌───────▼───────┐
-│  VM-SPLUNK    │       │ VM-WIN-ENDPOINT│       │ VM-ATTACKER   │
-│  10.0.0.10/24 │       │  10.0.0.20/24  │       │  10.0.0.100/24│
-│  (Splunk Srv) │       │  (Windows)     │       │  (Kali)       │
-└───────────────┘       └────────────────┘       └───────────────┘
-        │                        │                        │
-┌───────▼───────┐       ┌───────▼───────┐
-│ VM-LINUX-ENDP │       │ VM-FORENSICS  │
-│  10.0.0.30/24 │       │  10.0.0.40/24 │
-│  (Ubuntu)     │       │  (Windows)    │
-└───────────────┘       └───────────────┘
-```
 
 ## 2. Chi tiết hạ tầng
 ### 2.1. Phân bổ tài nguyên
@@ -91,7 +72,7 @@
 | Tổng    |     | 8GB    | 4vCPU    | 80GB    |     |
 
 ### 2.2. Cấu hình network
-#### Thiết lập Host-Only Network trên VirtualBox
+#### 2.2.1. Thiết lập Host-Only Network trên VirtualBox
 Trước khi tạo máy ảo, cần tạo sẵn card mạng ảo Host-Onlu để các VM giao tiếp với nhau và với máy thật
 1. Mở VirtualBox -> File -> Host Network Manager
 2. Nhấn Create (nếu chưa có). Mặc định VirtualBox sẽ tạo `vboxnet0`
@@ -100,7 +81,7 @@ Trước khi tạo máy ảo, cần tạo sẵn card mạng ảo Host-Onlu để
 - IPv4 Network Mask: `255.255.255.0`
 - DHCP Server: Disable (Tắt DHCP Server của VirtualBox). Lý do: Chúng ta sẽ cấp phát IP tĩnh thủ công hoặc để pfSense làm DHCP Server, tránh xung đột IP.
 
-#### Cấu hình Card Mạng cho từng V
+#### 2.2.2. Cấu hình Card Mạng cho từng VM trên host-A
 **A. VM-pfSense (Cần 2 card mạng)**
 | Adapter    | Loại (Attached to)    | Tên (Name)    | Mục đích    | Ghi chú    |
 | ------- | ------- | ------- | ------- | ------- |
@@ -123,42 +104,96 @@ Cấu hình IP tĩnh:
 | VM-SPLUNK    | Host-Only    | 192.168.56.10    | 192.168.56.1    | 192.168.56.1    |
 | VM-WIN-ENDPOINT    | Host-Only    | 192.168.56.20    | 192.168.56.1    | 192.168.56.1    |
 | VM-LINUX-ENDPOINT    | Host-Only    | 192.168.56.30    | 192.168.56.1    | 192.168.56.1    |
-| VM-FORENSICS    | Host-Only    | 192.168.56.40    | 192.168.56.1    | 192.168.56.1    |
-| VM-ATTACKER    | Host-Only    | 192.168.56.100    | 192.168.56.1    | 192.168.56.1    |
 
-**Setup rule pfSense**
+#### 2.2.3. Setup rule pfSense (Interface LAN)**
+Bộ rule theo thứ tự ưu tiên:
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    pfSense Firewall Rules                   │
-├─────────────────────────────────────────────────────────────┤
-│ LAN → ANY:  Allow  (cho phép giao tiếp nội bộ)              │
-│ LAN → WAN:  Allow  (cho phép truy cập Internet)             │
-│ WAN → LAN:  Block  (chặn truy cập từ ngoài vào)             │
-│ ATTACKER → ENDPOINTS: Block (mặc định, bật khi test)        │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LAN Rules (theo thứ tự từ trên xuống)                                        │
+├────┬──────────┬──────────┬─────────────────────┬────────┬──────────────────┤
+│ #  │ Action   │ Protocol │ Source              │ Dest   │ Description      │
+├────┼──────────┼──────────┼─────────────────────┼────────┼──────────────────┤
+│ 1  │ Pass     │ *        │ LAN Address         │*       │ Anti-Lockout     │
+│ 2  │ Pass     │ IPv4 *   │ LAN subnets         │*       │ Allow LAN to Net │
+│ 3  │ Pass     │ TCP/UDP  │ LAN subnets         │* :53   │ Allow DNS        │
+│ 4  │ Pass     │ TCP      │ LAN subnets         │*:80,443│ Allow HTTP/S     │
+│ 5  │ Block    │ IPv4 *   │ 192.168.56.100      │ LAN net│ Block Attacker   │
+│ 6  │ Pass     │ IPv4 *   │ LAN net             │ LAN net│ Allow internal   │
+└────┴──────────┴──────────┴─────────────────────┴────────┴──────────────────┘
 ```
-1. Truy cập Web GUI -> LAN tab
-2. Mặc định, có thể có rule kiểu "Default allow LAN to any". Rule này rất rộng. Đối với môi trường lab, tốt nhất là tạo các rule cụ thể hơn. Có thể disable hoặc xóa rule mặc định
-3. Thêm rule theo thứ tự:
-- **Rule 1: Allow all internal Lab traffic.**
-    - **Action:** `Pass`
-    - **Protocol:** `Any`
-    - **Source:** `LAN net` (This represents 192.168.56.0/24)
-    - **Destination:** `LAN net`
-    - **Description:** `Allow internal lab communication`
-- **Rule 2: Allow internal traffic out to the Internet.**
-    - **Action:** `Pass`
-    - **Protocol:** `Any` (or be more restrictive by allowing only `TCP/UDP` on ports like `80`, `443`, and `53` for a more secure lab)
-    - **Source:** `LAN net`
-    - **Destination:** `Any`
-    - **Description:** `Allow LAN to Internet`
-- **Rule 3: Block the Attacker VM from communicating with endpoints (controllable for testing).**
-    - **Action:** `Block`
-    - **Protocol:** `Any`
-    - **Source:** Type `192.168.56.100/32` (the specific IP of the attacker)
-    - **Destination:** `LAN net`
-    - **Description:** `Block VM-ATTACKER to internal endpoints (enable for test)`
-> *Tip:* To easily toggle this block rule on and off during testing, you can **check the `Disabled` box** for this rule when you create it. Then, you can simply check/uncheck it on the main rules page to enable or disable the block .
+**Rule #1: Anti-Lockout (Mặc định của pfSense)**
+| Trường    | Giá trị    |
+| ------- | ------- |
+| Action    | Pass    |
+| Interface    | LAN    |
+| Protocol    | *    |
+| Source    | LAN Address (192.168.56.1)    |
+| Destination    | *    |
+| Port    | 80, 443    |
+>Mục đích: Cho phép truy cập Web GUI pfSense từ chính nó. Không được xóa.
+
+**Rule #2: Allow LAN to Internet **
+| Trường    | Giá trị    |
+| ------- | ------- |
+| Action    | Pass    |
+| Interface    | LAN    |
+| Protocol    | IPv4 *    |
+| Source    | LAN subnets    |
+| Destination    | *    |
+| Port    | *    |
+>Mục đích: Cho phép tất cả VM trong LAN (192.168.56.0/24) ra Internet qua pfSense (Splunk, Win-Endpoint, Linux-Endpoint).
+>Đây là rule quan trọng nhất — nếu để LAN Address như ban đầu, các VM không ra được Internet.
+
+**Rule #3: Allow DNS**
+| Trường    | Giá trị    |
+| ------- | ------- |
+| Action    | Pass    |
+| Interface    | LAN    |
+| Protocol    | TCP/UDP    |
+| Source    | LAN subnets    |
+| Destination    | *    |
+| Port    | 53    |
+>Mục đích: Cho phép DNS query từ các VM (cần thiết nếu pfSense làm DNS Resolver).
+
+>💡 Lưu ý: Rule này có thể không cần thiết nếu Rule #2 đã cho phép mọi traffic. Nhưng để rõ ràng, có thể thêm.
+
+**Rule #4: Allow HTTP/HTTPS**
+| Trường    | Giá trị    |
+| ------- | ------- |
+| Action    | Pass    |
+| Interface    | LAN    |
+| Protocol    | TCP    |
+| Source    | LAN subnets    |
+| Destination    | *    |
+| Port    | 80, 443    |
+>Mục đích: Cho phép duyệt web (HTTP/HTTPS). Cũng có thể bỏ nếu Rule #2 đã bao quát.
+
+**Rule #5: Block VM-ATTACKER (Tùy chọn — Bật/tắt theo nhu cầu)**
+| Trường    | Giá trị    |
+| ------- | ------- |
+| Action    | Block    |
+| Interface    | LAN    |
+| Protocol    | IPv4 *    |
+| Source    | 192.168.56.100    |
+| Destination    | LAN net    |
+| Port    | *    |
+| Description |	Block VM-ATTACKER to internal endpoints (enable or test) |
+>Mục đích: Ngăn VM-ATTACKER tấn công các endpoint khi chưa thực hành.
+
+>⚠️ QUAN TRỌNG: Rule này CHỈ có tác dụng khi traffic đi qua pfSense. Vì Attacker và Endpoint cùng subnet (192.168.56.0/24), traffic đi trực tiếp Layer 2 → rule này KHÔNG chặn được.
+Nếu muốn chặn thực sự, phải tách subnet (OPT1) hoặc dùng cơ chế khác.
+Trong lab: Rule này gần như vô dụng — có thể xóa hoặc giữ để làm ví dụ.
+
+**Rule #6: Allow Internal Lab Communication**
+| Trường    | Giá trị    |
+| ------- | ------- |
+| Action    | Pass    |
+| Interface    | LAN    |
+| Protocol    | IPv4 *    |
+| Source    | LAN net    |
+| Destination    | LAN net    |
+| Port    | *    |
+>Mục đích: Cho phép các VM trong LAN nói chuyện với nhau (nhưng thực tế chúng không qua pfSense).
 
 **Cách cấu hình ip trên Ubuntu Server**
 1. Mở terminal, dùng lệnh `ip addr` để xác định tên giao diện mạng (ví dụ: `ens33` hoặc `enp0s3`).
@@ -246,7 +281,70 @@ sudo /opt/splunkforwarder/bin/splunk add monitor /var/log/ufw.log
 ```
 
 ### 3.3. Attacker Machine (VM-ATTACKER - Kali Linux)
-**Các công cụ cần cài đặt/sẵn có trên kali:**
+#### 3.3.1. Cấu hình mạng
+```bash
+# 1. Kiểm tra interface
+ip a
+# Sẽ thấy: eth0 (Bridged) và eth1 (NAT)
+
+# 2. Xem tên kết nối NetworkManager
+nmcli connection show
+```
+
+**Cấu hình Adapter 1(Bridged):**
+```bash
+sudo nmcli connection modify "Wired connection 1" \
+    ipv4.addresses 192.168.56.100/24 \
+    ipv4.gateway 192.168.56.1 \
+    ipv4.dns "1.1.1.1 8.8.8.8" \
+    ipv4.method manual \
+    ipv4.never-default yes \
+    connection.autoconnect yes
+
+sudo nmcli connection down "Wired connection 1"
+sudo nmcli connection up "Wired connection 1"
+```
+>⚠️ Điểm mấu chốt: `ipv4.never-default yes` — nghĩa là KHÔNG dùng Bridged làm default route. Default route sẽ do NAT đảm nhiệm.
+
+**Cấu hình Adapter 2 (NAT) - để kết nối internet:**
+```bash
+# Tạo kết nối mới cho eth1
+sudo nmcli connection add type ethernet con-name "nat-internet" ifname eth1 \
+    ipv4.method auto \
+    ipv4.route-metric 100 \
+    connection.autoconnect yes
+
+sudo nmcli connection up "nat-internet"
+```
+>⚠️ Điểm mấu chốt: `ipv4.route-metric 100` — metric thấp hơn Bridged → NAT sẽ là default route.
+
+**Giải thích cách hoạt động**
+Khi Attacker tấn công Endpoint (192.168.56.20):
+```
+VM-ATTACKER (192.168.56.100)
+    │
+    ├─ Gói tin đến 192.168.56.20 (vm-win-endpoint)
+    │
+    ├─ Route lookup: 192.168.56.0/24 dev eth0 (cùng subnet)
+    │
+    ├─ Gửi trực tiếp qua eth0 (Bridged, Layer 2) → Endpoint
+    │
+    └─ KHÔNG qua pfSense → Nhanh, nhưng pfSense không log
+```
+Khi Attacker cần tải tool từ Internet:
+```
+VM-ATTACKER
+    │
+    ├─ Gói tin đến 8.8.8.8
+    │
+    ├─ Route lookup: default via 10.0.2.2 dev eth1
+    │
+    ├─ Gửi qua eth1 (NAT) → VirtualBox NAT → Modem → Internet
+    │
+    └─ KHÔNG qua pfSense → Nhanh hơn ✅
+```
+
+#### 3.3.2. Các công cụ cần cài đặt/sẵn có trên kali:
 | Nhóm công cụ    | Công cụ cụ thể    | Mục đích    |
 | ------- | ------- | ------- |
 | Recon    | Nmap, Masscan, RustScan    | Quét mạng, phát hiện dịch vụ    |
@@ -275,7 +373,62 @@ curl https://sliver.sh/install | sudo bash
 ```
 
 ### 3.4. Forensics Machine (VM-FORENSICS - Windows 10)
-Các công cụ cần cài:
+#### 3.4.1. Cấu hình mạng
+**Cấu hình Adapter 1 (Bridged) - IP tĩnh**
+```powershell
+# Đặt IP tĩnh cho adapter Bridged
+New-NetIPAddress -InterfaceAlias "Ethernet" `
+    -IPAddress 192.168.56.40 `
+    -PrefixLength 24 `
+    -DefaultGateway 192.168.56.1
+
+# Đặt DNS
+Set-DnsClientServerAddress -InterfaceAlias "Ethernet" `
+    -ServerAddresses 1.1.1.1, 8.8.8.8
+
+# Kiểm tra
+Get-NetIPAddress -InterfaceAlias "Ethernet"
+```
+
+**Cấu hình Adapter 2 (NAT) - DHCP**
+```powershell
+# Đặt DHCP cho adapter NAT
+Set-NetIPInterface -InterfaceAlias "Ethernet 2" -Dhcp Enabled
+
+# Renew DHCP
+ipconfig /renew "Ethernet 2"
+
+# Kiểm tra
+Get-NetIPAddress -InterfaceAlias "Ethernet 2"
+# Sẽ thấy IP 10.0.2.x
+```
+
+**Đặt metric để NAT là default route**
+Đây là bước quan trọng nhất — để Internet đi qua NAT (nhanh) thay vì qua Bridged + pfSense:
+```powershell
+# Xem metric hiện tại
+Get-NetIPInterface | Where-Object {$_.AddressFamily -eq "IPv4"} | Select InterfaceAlias, InterfaceMetric
+
+# Đặt metric thấp cho NAT (ưu tiên cao)
+Set-NetIPInterface -InterfaceAlias "Ethernet 2" -InterfaceMetric 10
+
+# Đặt metric cao cho Bridged (ưu tiên thấp)
+Set-NetIPInterface -InterfaceAlias "Ethernet" -InterfaceMetric 100
+
+# Kiểm tra lại
+Get-NetIPInterface | Where-Object {$_.AddressFamily -eq "IPv4"} | Select InterfaceAlias, InterfaceMetric
+```
+> 💡 Nguyên lý: Windows chọn default route dựa trên metric thấp nhất + route metric. Với NAT = 10 và Bridged = 100 → NAT sẽ là default route.
+
+**Xóa default gateway của Bridged (nếu cần)**
+Windows đôi khi vẫn dùng gateway của Bridged. Để chắc chắn, xóa default gateway của Bridged:
+```powershell
+# Xóa default gateway của Bridged (nhưng giữ IP)
+Remove-NetRoute -InterfaceAlias "Ethernet" -DestinationPrefix "0.0.0.0/0" -Confirm:$false
+```
+>⚠️ Lưu ý: Vẫn giữ IP `192.168.56.40` và subnet route `192.168.56.0/24` để tấn công/forensics với các VM khác.
+
+#### 3.4.2. Các công cụ cần cài:
 | Công cụ    | Mục đích    | Nguồn    |
 | ------- | ------- | ------- |
 | Autopsy / The Sleuth Kit    | Phân tích disk forensics    | autopsy.com    |
